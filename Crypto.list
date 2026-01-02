@@ -54,6 +54,16 @@ DOMAIN-KEYWORD,hbfile
 DOMAIN-KEYWORD,hbabit
 DOMAIN-KEYWORD,huobiops
 DOMAIN-KEYWORD,huobito
+#Bitget
+DOMAIN-KEYWORD,bitget
+DOMAIN-KEYWORD,bitgetcdn
+DOMAIN-KEYWORD,bitgetimg
+DOMAIN-KEYWORD,bgstatic
+DOMAIN-KEYWORD,gm816
+DOMAIN-KEYWORD,gdrichem
+DOMAIN-KEYWORD,bitkeep
+DOMAIN-KEYWORD,bwb
+DOMAIN-KEYWORD,engagelab
 #Hyperliquid
 DOMAIN-KEYWORD,hyperliquid
 #Asterdex
