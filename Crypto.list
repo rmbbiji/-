@@ -50,5 +50,7 @@ DOMAIN-KEYWORD,hyperliquid
 DOMAIN-KEYWORD,aster
 #Lighter
 DOMAIN-KEYWORD,lighter
-
+#其他
+DOMAIN-KEYWORD,metamask
+DOMAIN-KEYWORD,walletconnect
 
