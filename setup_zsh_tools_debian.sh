@@ -15,27 +15,49 @@ else
   SUDO="sudo"
 fi
 
-TARGET_USER="${USER}"
-TARGET_HOME="${HOME}"
-export PATH="${TARGET_HOME}/.local/bin:${PATH}"
-ZSH_DIR="${TARGET_HOME}/.oh-my-zsh"
-ZSH_CUSTOM="${ZSH_CUSTOM:-${ZSH_DIR}/custom}"
-ZSHRC="${TARGET_HOME}/.zshrc"
-NERD_FONT_NAME="${NERD_FONT_NAME:-JetBrainsMono}"
-NERD_FONT_DIR="${TARGET_HOME}/.local/share/fonts/NerdFonts/${NERD_FONT_NAME}"
-STARSHIP_CONFIG="${TARGET_HOME}/.config/starship.toml"
-MANAGED_BEGIN="# >>> rmbbiji-toolbox managed block >>>"
-MANAGED_END="# <<< rmbbiji-toolbox managed block <<<"
-
 if [[ ! -f /etc/debian_version ]] || ! command -v apt-get >/dev/null 2>&1; then
   echo "这个脚本仅支持 Debian / Ubuntu"
   exit 1
 fi
 
+TARGET_USER="$(id -un)"
+TARGET_HOME="$(getent passwd "${TARGET_USER}" | cut -d: -f6 || true)"
+
+if [[ -z "${TARGET_HOME}" || ! -d "${TARGET_HOME}" ]]; then
+  echo "无法确定当前用户目录: ${TARGET_USER}"
+  exit 1
+fi
+
+if [[ "${EUID}" -eq 0 ]]; then
+  export PATH="${TARGET_HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+else
+  export PATH="${TARGET_HOME}/.local/bin:${PATH}"
+fi
+
+ZSH_DIR="${TARGET_HOME}/.oh-my-zsh"
+ZSH_CUSTOM="${ZSH_DIR}/custom"
+ZSHRC="${TARGET_HOME}/.zshrc"
+NERD_FONT_NAME="${NERD_FONT_NAME:-JetBrainsMono}"
+NERD_FONT_DIR="${TARGET_HOME}/.local/share/fonts/NerdFonts/${NERD_FONT_NAME}"
+STARSHIP_CONFIG="${TARGET_HOME}/.config/starship.toml"
+OMZ_MANAGED_BEGIN="# >>> rmbbiji-toolbox oh-my-zsh block >>>"
+OMZ_MANAGED_END="# <<< rmbbiji-toolbox oh-my-zsh block <<<"
+MANAGED_BEGIN="# >>> rmbbiji-toolbox managed block >>>"
+MANAGED_END="# <<< rmbbiji-toolbox managed block <<<"
+IS_SSH_SESSION=0
+
+if [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_TTY:-}" ]]; then
+  IS_SSH_SESSION=1
+fi
+
 echo "当前用户: ${TARGET_USER}"
 echo "用户目录: ${TARGET_HOME}"
 echo "Nerd Font: ${NERD_FONT_NAME}"
-echo "开始安装 zsh / oh-my-zsh / Starship / eza / bat / fd / fzf / zoxide / Nerd Font..."
+if [[ "${IS_SSH_SESSION}" -eq 1 ]]; then
+  echo "开始安装 zsh / oh-my-zsh / Starship / eza / bat / fd / fzf / zoxide；Nerd Font 请安装在 SSH 客户端..."
+else
+  echo "开始安装 zsh / oh-my-zsh / Starship / eza / bat / fd / fzf / zoxide / Nerd Font..."
+fi
 
 ${SUDO} apt-get update
 ${SUDO} apt-get install -y \
@@ -87,27 +109,38 @@ mkdir -p "${ZSH_CUSTOM}/plugins"
 install_or_update_plugin() {
   local repo_url="$1"
   local plugin_dir="$2"
+  local plugin_file="$3"
 
   if [[ -d "${plugin_dir}/.git" ]]; then
     echo "更新插件: ${plugin_dir}"
     if ! git -C "${plugin_dir}" pull --ff-only; then
       echo "警告: 插件更新失败，保留现有版本: ${plugin_dir}"
     fi
+  elif [[ -f "${plugin_dir}/${plugin_file}" ]]; then
+    echo "插件已存在，跳过安装: ${plugin_dir}"
   elif [[ -e "${plugin_dir}" ]]; then
-    echo "插件路径已存在但不是 git 仓库，跳过: ${plugin_dir}"
+    echo "插件路径已存在但内容无效: ${plugin_dir}"
+    return 1
   else
     echo "安装插件: ${repo_url}"
     git clone --depth=1 "${repo_url}" "${plugin_dir}"
+  fi
+
+  if [[ ! -f "${plugin_dir}/${plugin_file}" ]]; then
+    echo "插件安装不完整，缺少 ${plugin_file}: ${plugin_dir}"
+    return 1
   fi
 }
 
 install_or_update_plugin \
   "https://github.com/zsh-users/zsh-autosuggestions.git" \
-  "${ZSH_CUSTOM}/plugins/zsh-autosuggestions"
+  "${ZSH_CUSTOM}/plugins/zsh-autosuggestions" \
+  "zsh-autosuggestions.plugin.zsh"
 
 install_or_update_plugin \
   "https://github.com/zsh-users/zsh-syntax-highlighting.git" \
-  "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting"
+  "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting" \
+  "zsh-syntax-highlighting.plugin.zsh"
 
 install_fzf() {
   local fzf_dir="${TARGET_HOME}/.fzf"
@@ -128,7 +161,7 @@ install_fzf() {
   fi
 
   echo "执行 fzf 官方安装脚本..."
-  "${fzf_dir}/install" --all --no-bash --no-fish --no-nushell
+  "${fzf_dir}/install" --all --no-update-rc --no-bash --no-fish --no-nushell
 }
 
 install_fzf
@@ -149,17 +182,20 @@ install_zoxide
 
 install_starship() {
   local starship_bin backup_file
-  starship_bin="${TARGET_HOME}/.local/bin/starship"
+  starship_bin="$(type -P starship || true)"
 
-  if command -v starship >/dev/null 2>&1; then
-    starship_bin="$(command -v starship)"
-    echo "Starship 已存在，跳过安装"
-  elif [[ -x "${starship_bin}" ]]; then
-    echo "Starship 已存在，跳过安装"
+  if [[ -z "${starship_bin}" && -x "${TARGET_HOME}/.local/bin/starship" ]]; then
+    starship_bin="${TARGET_HOME}/.local/bin/starship"
+  fi
+
+  if [[ -n "${starship_bin}" ]] \
+    && "${starship_bin}" preset catppuccin-powerline -o /dev/null --force >/dev/null 2>&1; then
+    echo "Starship 已存在且版本兼容，跳过安装"
   else
-    echo "安装 Starship..."
+    echo "安装或更新 Starship..."
     mkdir -p "${TARGET_HOME}/.local/bin"
     curl -sS https://starship.rs/install.sh | sh -s -- -y -b "${TARGET_HOME}/.local/bin"
+    starship_bin="${TARGET_HOME}/.local/bin/starship"
   fi
 
   mkdir -p "$(dirname "${STARSHIP_CONFIG}")"
@@ -247,17 +283,36 @@ install_nerd_font() {
   rm -rf "${tmp_dir}"
 }
 
-install_nerd_font
+if [[ "${IS_SSH_SESSION}" -eq 1 ]]; then
+  echo "检测到 SSH 会话，跳过服务器端 Nerd Font 安装"
+else
+  install_nerd_font
+fi
 
 ensure_zshrc_base() {
+  local backup_file block_file
+  block_file="$(mktemp)"
+
+  cat > "${block_file}" <<'EOF'
+# >>> rmbbiji-toolbox oh-my-zsh block >>>
+export ZSH="$HOME/.oh-my-zsh"
+export ZSH_CUSTOM="$ZSH/custom"
+typeset -ga plugins
+for rmbbiji_plugin_name in git zsh-autosuggestions zsh-syntax-highlighting; do
+  (( ${plugins[(Ie)$rmbbiji_plugin_name]} )) || plugins+=("$rmbbiji_plugin_name")
+done
+unset rmbbiji_plugin_name
+# <<< rmbbiji-toolbox oh-my-zsh block <<<
+EOF
+
   if [[ ! -f "${ZSHRC}" ]]; then
     echo "创建 ${ZSHRC}"
-    cat > "${ZSHRC}" <<EOF
-export ZSH="${ZSH_DIR}"
+    cat "${block_file}" > "${ZSHRC}"
+    cat >> "${ZSHRC}" <<'EOF'
 ZSH_THEME="robbyrussell"
-plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
-source "\$ZSH/oh-my-zsh.sh"
+source "$ZSH/oh-my-zsh.sh"
 EOF
+    rm -f "${block_file}"
     return
   fi
 
@@ -265,31 +320,40 @@ EOF
   echo "备份 ${ZSHRC} 到 ${backup_file}"
   cp "${ZSHRC}" "${backup_file}"
 
-  if ! grep -q '^export ZSH=' "${ZSHRC}"; then
-    sed -i "1iexport ZSH=\"${ZSH_DIR}\"" "${ZSHRC}"
+  if grep -qF "${OMZ_MANAGED_BEGIN}" "${ZSHRC}" && grep -qF "${OMZ_MANAGED_END}" "${ZSHRC}"; then
+    awk -v begin="${OMZ_MANAGED_BEGIN}" -v end="${OMZ_MANAGED_END}" '
+      $0 == begin { skip=1; next }
+      $0 == end { skip=0; next }
+      skip != 1 { print }
+    ' "${ZSHRC}" > "${ZSHRC}.tmp"
+    mv "${ZSHRC}.tmp" "${ZSHRC}"
   fi
 
-  if grep -q '^plugins=' "${ZSHRC}"; then
-    sed -i 's/^plugins=.*/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' "${ZSHRC}"
-  elif grep -q 'oh-my-zsh\.sh' "${ZSHRC}"; then
-    awk '
-      !done && /oh-my-zsh\.sh/ {
-        print "plugins=(git zsh-autosuggestions zsh-syntax-highlighting)"
-        done=1
+  if grep -Eq '^[[:space:]]*(source|\.)[[:space:]]+[^#]*oh-my-zsh\.sh' "${ZSHRC}"; then
+    awk -v block_file="${block_file}" '
+      /^[[:space:]]*(source|\.)[[:space:]]+[^#]*oh-my-zsh\.sh/ {
+        if (!done) {
+          while ((getline block_line < block_file) > 0) {
+            print block_line
+          }
+          close(block_file)
+          print "source \"$ZSH/oh-my-zsh.sh\""
+          done=1
+        }
+        next
       }
       { print }
     ' "${ZSHRC}" > "${ZSHRC}.tmp"
     mv "${ZSHRC}.tmp" "${ZSHRC}"
   else
-    printf '\nplugins=(git zsh-autosuggestions zsh-syntax-highlighting)\n' >> "${ZSHRC}"
-  fi
-
-  if ! grep -q 'oh-my-zsh\.sh' "${ZSHRC}"; then
+    printf '\n' >> "${ZSHRC}"
+    cat "${block_file}" >> "${ZSHRC}"
     cat >> "${ZSHRC}" <<'EOF'
-
 source "$ZSH/oh-my-zsh.sh"
 EOF
   fi
+
+  rm -f "${block_file}"
 }
 
 write_managed_block() {
@@ -325,6 +389,10 @@ if command -v fdfind >/dev/null 2>&1; then
   alias fd='fdfind'
 fi
 
+if [[ -f "$HOME/.fzf.zsh" ]]; then
+  source "$HOME/.fzf.zsh"
+fi
+
 if command -v zoxide >/dev/null 2>&1; then
   eval "$(zoxide init zsh)"
 fi
@@ -352,7 +420,7 @@ EOF
 ensure_zshrc_base
 write_managed_block
 
-ZSH_BIN="$(command -v zsh)"
+ZSH_BIN="$(type -P zsh || true)"
 
 if [[ -z "${ZSH_BIN}" ]]; then
   echo "没有找到 zsh，可检查 apt 安装是否成功"
@@ -376,9 +444,13 @@ fi
 
 echo
 echo "安装完成。"
-echo "请到你的终端设置里把字体切换成 '${NERD_FONT_NAME} Nerd Font' 或同名字体变体。"
+if [[ "${IS_SSH_SESSION}" -eq 1 ]]; then
+  echo "请在当前 SSH 客户端所在电脑安装 '${NERD_FONT_NAME} Nerd Font'，并在终端设置中选择它。"
+else
+  echo "请到你的终端设置里把字体切换成 '${NERD_FONT_NAME} Nerd Font' 或同名字体变体。"
+  echo "可用 'fc-list | grep \"Nerd Font\"' 检查字体是否安装成功。"
+fi
 echo "这样 Starship / eza / bat / 其他带图标的工具才会正常显示图标。"
-echo "可用 'fc-list | grep \"Nerd Font\"' 检查字体是否安装成功。"
 
 if [[ -t 0 && -t 1 ]]; then
   echo
