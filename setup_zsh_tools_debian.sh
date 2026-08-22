@@ -363,7 +363,11 @@ CURRENT_SHELL="$(getent passwd "${TARGET_USER}" | cut -d: -f7 || true)"
 
 if [[ "${CURRENT_SHELL}" != "${ZSH_BIN}" ]]; then
   echo "切换默认 shell 为: ${ZSH_BIN}"
-  if ! ${SUDO} chsh -s "${ZSH_BIN}" "${TARGET_USER}"; then
+  if [[ -n "${SUDO}" ]]; then
+    if ! ${SUDO} -n chsh -s "${ZSH_BIN}" "${TARGET_USER}"; then
+      echo "警告: 默认 shell 切换失败，请手动执行: chsh -s ${ZSH_BIN}"
+    fi
+  elif ! chsh -s "${ZSH_BIN}" "${TARGET_USER}"; then
     echo "警告: 默认 shell 切换失败，请手动执行: chsh -s ${ZSH_BIN}"
   fi
 else
