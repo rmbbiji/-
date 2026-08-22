@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Debian / Ubuntu: 安装 zsh + oh-my-zsh + Starship + eza/bat/fd/zoxide + Nerd Font
+# Debian / Ubuntu: 安装 zsh + oh-my-zsh + Starship + eza/bat/fd/fzf/zoxide + Nerd Font
 # 用法：
 #   bash setup_zsh_tools_debian.sh
 # 可选：
@@ -29,7 +29,7 @@ MANAGED_END="# <<< rmbbiji-toolbox managed block <<<"
 echo "当前用户: ${TARGET_USER}"
 echo "用户目录: ${TARGET_HOME}"
 echo "Nerd Font: ${NERD_FONT_NAME}"
-echo "开始安装 zsh / oh-my-zsh / Starship / eza / bat / fd / zoxide / Nerd Font..."
+echo "开始安装 zsh / oh-my-zsh / Starship / eza / bat / fd / fzf / zoxide / Nerd Font..."
 
 ${SUDO} apt-get update
 ${SUDO} apt-get install -y \
@@ -98,6 +98,28 @@ install_or_update_plugin \
 install_or_update_plugin \
   "https://github.com/zsh-users/zsh-syntax-highlighting.git" \
   "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting"
+
+install_fzf() {
+  local fzf_dir="${TARGET_HOME}/.fzf"
+
+  if [[ -d "${fzf_dir}/.git" ]]; then
+    echo "更新 fzf: ${fzf_dir}"
+    git -C "${fzf_dir}" pull --ff-only || true
+  elif [[ -x "${fzf_dir}/install" ]]; then
+    echo "fzf 已存在，跳过克隆: ${fzf_dir}"
+  elif [[ -e "${fzf_dir}" ]]; then
+    echo "fzf 路径已存在但无法执行官方安装脚本，跳过: ${fzf_dir}"
+    return
+  else
+    echo "安装 fzf..."
+    git clone --depth=1 https://github.com/junegunn/fzf.git "${fzf_dir}"
+  fi
+
+  echo "执行 fzf 官方安装脚本..."
+  "${fzf_dir}/install" --all --no-bash --no-fish --no-nushell
+}
+
+install_fzf
 
 install_zoxide() {
   local zoxide_bin="${TARGET_HOME}/.local/bin/zoxide"
