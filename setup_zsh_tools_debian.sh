@@ -17,6 +17,7 @@ fi
 
 TARGET_USER="${USER}"
 TARGET_HOME="${HOME}"
+export PATH="${TARGET_HOME}/.local/bin:${PATH}"
 ZSH_DIR="${TARGET_HOME}/.oh-my-zsh"
 ZSH_CUSTOM="${ZSH_CUSTOM:-${ZSH_DIR}/custom}"
 ZSHRC="${TARGET_HOME}/.zshrc"
@@ -25,6 +26,11 @@ NERD_FONT_DIR="${TARGET_HOME}/.local/share/fonts/NerdFonts/${NERD_FONT_NAME}"
 STARSHIP_CONFIG="${TARGET_HOME}/.config/starship.toml"
 MANAGED_BEGIN="# >>> rmbbiji-toolbox managed block >>>"
 MANAGED_END="# <<< rmbbiji-toolbox managed block <<<"
+
+if [[ ! -f /etc/debian_version ]] || ! command -v apt-get >/dev/null 2>&1; then
+  echo "这个脚本仅支持 Debian / Ubuntu"
+  exit 1
+fi
 
 echo "当前用户: ${TARGET_USER}"
 echo "用户目录: ${TARGET_HOME}"
@@ -42,6 +48,8 @@ ${SUDO} apt-get install -y \
   bat \
   fd-find \
   fontconfig \
+  less \
+  unzip \
   xz-utils
 
 install_eza() {
@@ -82,7 +90,9 @@ install_or_update_plugin() {
 
   if [[ -d "${plugin_dir}/.git" ]]; then
     echo "更新插件: ${plugin_dir}"
-    git -C "${plugin_dir}" pull --ff-only || true
+    if ! git -C "${plugin_dir}" pull --ff-only; then
+      echo "警告: 插件更新失败，保留现有版本: ${plugin_dir}"
+    fi
   elif [[ -e "${plugin_dir}" ]]; then
     echo "插件路径已存在但不是 git 仓库，跳过: ${plugin_dir}"
   else
@@ -104,7 +114,9 @@ install_fzf() {
 
   if [[ -d "${fzf_dir}/.git" ]]; then
     echo "更新 fzf: ${fzf_dir}"
-    git -C "${fzf_dir}" pull --ff-only || true
+    if ! git -C "${fzf_dir}" pull --ff-only; then
+      echo "警告: fzf 更新失败，继续使用当前版本: ${fzf_dir}"
+    fi
   elif [[ -x "${fzf_dir}/install" ]]; then
     echo "fzf 已存在，跳过克隆: ${fzf_dir}"
   elif [[ -e "${fzf_dir}" ]]; then
@@ -159,22 +171,74 @@ install_starship() {
 
   echo "写入 Starship Catppuccin Powerline 配置: ${STARSHIP_CONFIG}"
   "${starship_bin}" preset catppuccin-powerline -o "${STARSHIP_CONFIG}" --force
-  sed -i '/^\[line_break\]$/,/^$/ s/^disabled = true$/disabled = false/' "${STARSHIP_CONFIG}"
+  awk '
+    BEGIN {
+      in_line_break = 0
+      found = 0
+      wrote_disabled = 0
+    }
+    /^\[line_break\]$/ {
+      if (in_line_break && !wrote_disabled) {
+        print "disabled = false"
+      }
+      in_line_break = 1
+      found = 1
+      wrote_disabled = 0
+      print
+      next
+    }
+    /^\[/ {
+      if (in_line_break && !wrote_disabled) {
+        print "disabled = false"
+      }
+      in_line_break = 0
+    }
+    in_line_break && /^disabled = / {
+      print "disabled = false"
+      wrote_disabled = 1
+      next
+    }
+    {
+      print
+    }
+    END {
+      if (in_line_break && !wrote_disabled) {
+        print "disabled = false"
+      } else if (!found) {
+        print ""
+        print "[line_break]"
+        print "disabled = false"
+      }
+    }
+  ' "${STARSHIP_CONFIG}" > "${STARSHIP_CONFIG}.tmp"
+  mv "${STARSHIP_CONFIG}.tmp" "${STARSHIP_CONFIG}"
 }
 
 install_starship
 
 install_nerd_font() {
-  local tmp_dir archive_url archive_path
+  local tmp_dir archive_url archive_path archive_type
 
   echo "安装 Nerd Font: ${NERD_FONT_NAME}..."
   tmp_dir="$(mktemp -d)"
   archive_url="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/${NERD_FONT_NAME}.tar.xz"
   archive_path="${tmp_dir}/${NERD_FONT_NAME}.tar.xz"
+  archive_type="tar.xz"
 
   mkdir -p "${NERD_FONT_DIR}"
-  curl -fsSL "${archive_url}" -o "${archive_path}"
-  tar -xJf "${archive_path}" -C "${NERD_FONT_DIR}"
+  if ! curl -fsSL "${archive_url}" -o "${archive_path}"; then
+    archive_url="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/${NERD_FONT_NAME}.zip"
+    archive_path="${tmp_dir}/${NERD_FONT_NAME}.zip"
+    archive_type="zip"
+    echo "tar.xz 下载失败，尝试 zip: ${NERD_FONT_NAME}"
+    curl -fsSL "${archive_url}" -o "${archive_path}"
+  fi
+
+  if [[ "${archive_type}" == "tar.xz" ]]; then
+    tar -xJf "${archive_path}" -C "${NERD_FONT_DIR}"
+  else
+    unzip -oq "${archive_path}" -d "${NERD_FONT_DIR}"
+  fi
 
   if command -v fc-cache >/dev/null 2>&1; then
     fc-cache -f "${TARGET_HOME}/.local/share/fonts"
@@ -299,10 +363,8 @@ CURRENT_SHELL="$(getent passwd "${TARGET_USER}" | cut -d: -f7 || true)"
 
 if [[ "${CURRENT_SHELL}" != "${ZSH_BIN}" ]]; then
   echo "切换默认 shell 为: ${ZSH_BIN}"
-  if [[ "${EUID}" -eq 0 ]]; then
-    chsh -s "${ZSH_BIN}" "${TARGET_USER}"
-  else
-    sudo chsh -s "${ZSH_BIN}" "${TARGET_USER}"
+  if ! ${SUDO} chsh -s "${ZSH_BIN}" "${TARGET_USER}"; then
+    echo "警告: 默认 shell 切换失败，请手动执行: chsh -s ${ZSH_BIN}"
   fi
 else
   echo "默认 shell 已经是 zsh: ${ZSH_BIN}"
@@ -312,6 +374,7 @@ echo
 echo "安装完成。"
 echo "请到你的终端设置里把字体切换成 '${NERD_FONT_NAME} Nerd Font' 或同名字体变体。"
 echo "这样 Starship / eza / bat / 其他带图标的工具才会正常显示图标。"
+echo "可用 'fc-list | grep \"Nerd Font\"' 检查字体是否安装成功。"
 
 if [[ -t 0 && -t 1 ]]; then
   echo
