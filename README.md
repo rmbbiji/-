@@ -36,7 +36,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/rmbbiji/rmbbiji-toolbox/
 
 ### 更新 short_cuts
 
-这个脚本会删除当前目录下的 `short_cuts` 目录，安装依赖，然后停止并重启 `/root/short_cuts/web/server.py`（监听 `0.0.0.0:4188`）。请先切换到你希望放置 `short_cuts` 的目录再运行，并确认 Web 服务确实使用这个路径和端口。
+这个脚本会删除当前目录下的 `short_cuts` 目录，安装依赖，然后通过监听端口 `4188` 查找、停止并重启 `/root/short_cuts/web/server.py`（监听 `0.0.0.0:4188`）。这样不会误结束执行更新脚本的 shell。请先切换到你希望放置 `short_cuts` 的目录再运行，并确认 Web 服务确实使用这个路径和端口；服务器需要安装 `lsof`。
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/rmbbiji/rmbbiji-toolbox/main/update_short_cuts.sh)"

@@ -61,7 +61,6 @@ else
 fi
 
 # ==================== 重启 short_cuts Web 服务 ====================
-# 只匹配目标 server.py，避免误杀其他 Python 服务。
 server_script="/root/short_cuts/web/server.py"
 server_port="4188"
 
@@ -70,8 +69,15 @@ if [ ! -f "$server_script" ]; then
     exit 1
 fi
 
+if ! command -v lsof >/dev/null 2>&1; then
+    echo "❌ 未安装 lsof，无法安全查找占用端口 $server_port 的旧 Web 服务。"
+    exit 1
+fi
+
 echo "正在停止旧的 short_cuts Web 服务..."
-server_pids=$(pgrep -f "$server_script" || true)
+# 通过监听端口定位服务。不能用 pgrep 匹配 server.py：远程 bash -c
+# 执行脚本时，脚本自身的命令行也会包含该路径，可能导致更新脚本被误杀。
+server_pids=$(lsof -t -iTCP:"$server_port" -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$server_pids" ]; then
     for pid in $server_pids; do
         kill "$pid" 2>/dev/null || true
@@ -79,14 +85,14 @@ if [ -n "$server_pids" ]; then
 
     # 给服务一个正常退出的机会，避免新服务启动时端口仍被占用。
     sleep 1
-    remaining_pids=$(pgrep -f "$server_script" || true)
+    remaining_pids=$(lsof -t -iTCP:"$server_port" -sTCP:LISTEN 2>/dev/null || true)
     if [ -n "$remaining_pids" ]; then
         echo "⚠️  旧服务未正常退出，正在强制停止..."
         for pid in $remaining_pids; do
             kill -KILL "$pid" 2>/dev/null || true
         done
         sleep 1
-        remaining_pids=$(pgrep -f "$server_script" || true)
+        remaining_pids=$(lsof -t -iTCP:"$server_port" -sTCP:LISTEN 2>/dev/null || true)
         if [ -n "$remaining_pids" ]; then
             echo "❌ 无法停止旧的 Web 服务，请确认当前用户有权限结束这些进程：$remaining_pids"
             exit 1
