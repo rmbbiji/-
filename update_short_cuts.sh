@@ -10,13 +10,30 @@ echo "正在检测 rmbbiji (GitHub) SSH 权限..."
 ssh_output=$(ssh -o BatchMode=yes -o ConnectTimeout=12 -o StrictHostKeyChecking=no -T rmbbiji 2>&1 || true)
 if printf "%s\n" "$ssh_output" | grep -qi "successfully authenticated"; then
     echo "✅ SSH 认证成功（GitHub），开始更新仓库..."
-    
+
+    auth_file="short_cuts/web/data/auth.json"
+    auth_backup="auth.json"
+    if [ -f "$auth_file" ]; then
+        if [ -e "$auth_backup" ]; then
+            echo "❌ 根目录已存在 $auth_backup，无法备份认证文件。"
+            exit 1
+        fi
+        mv "$auth_file" "$auth_backup"
+        echo "✅ 已备份 web 认证文件。"
+    fi
+
     rm -rf short_cuts
     git clone git@rmbbiji:rain-strom/short_cuts.git
     
     if [ ! -d "short_cuts" ]; then
         echo "❌ git clone 失败！"
         exit 1
+    fi
+
+    if [ -f "$auth_backup" ]; then
+        mkdir -p "$(dirname "$auth_file")"
+        mv "$auth_backup" "$auth_file"
+        echo "✅ 已恢复 web 认证文件。"
     fi
     echo "✅ 仓库更新完成。"
     
