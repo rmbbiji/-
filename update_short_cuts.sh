@@ -3,6 +3,9 @@ set -euo pipefail
 
 echo "=== short_cuts 更新脚本 ==="
 
+auth_file="/root/short_cuts/web/data/auth.json"
+auth_backup="/root/auth.json"
+
 # ==================== 检测 GitHub SSH 权限 (适配 rmbbiji) ====================
 echo "正在检测 rmbbiji (GitHub) SSH 权限..."
 
@@ -11,11 +14,9 @@ ssh_output=$(ssh -o BatchMode=yes -o ConnectTimeout=12 -o StrictHostKeyChecking=
 if printf "%s\n" "$ssh_output" | grep -qi "successfully authenticated"; then
     echo "✅ SSH 认证成功（GitHub），开始更新仓库..."
 
-    auth_file="short_cuts/web/data/auth.json"
-    auth_backup="auth.json"
     if [ -f "$auth_file" ]; then
         if [ -e "$auth_backup" ]; then
-            echo "❌ 根目录已存在 $auth_backup，无法备份认证文件。"
+            echo "❌ 已存在 $auth_backup，无法备份认证文件。"
             exit 1
         fi
         mv "$auth_file" "$auth_backup"
@@ -30,11 +31,6 @@ if printf "%s\n" "$ssh_output" | grep -qi "successfully authenticated"; then
         exit 1
     fi
 
-    if [ -f "$auth_backup" ]; then
-        mkdir -p "$(dirname "$auth_file")"
-        mv "$auth_backup" "$auth_file"
-        echo "✅ 已恢复 web 认证文件。"
-    fi
     echo "✅ 仓库更新完成。"
     
 else
@@ -76,6 +72,16 @@ get_server_pids() {
         $2 ~ /^python/ && index($0, target) { print $1 }
     '
 }
+
+# 先恢复认证文件，再关闭旧服务，确保新服务启动时认证文件已经就位。
+if [ -f "$auth_backup" ]; then
+    echo "正在恢复 web 认证文件..."
+    mkdir -p "$(dirname "$auth_file")"
+    mv -f "$auth_backup" "$auth_file"
+    echo "✅ 已将 $auth_backup 移动到 $auth_file。"
+else
+    echo "ℹ️  未找到 $auth_backup，无需移动认证文件。"
+fi
 
 echo "正在停止旧的 short_cuts Web 服务..."
 server_pids=$(get_server_pids)
