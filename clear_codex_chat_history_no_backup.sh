@@ -27,35 +27,33 @@ if [[ ! "${REPLY:-}" =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-if [ -f "$CODEX_HOME/logs_2.sqlite" ]; then
-  sqlite3 "$CODEX_HOME/logs_2.sqlite" <<'SQL'
-DELETE FROM logs;
-PRAGMA wal_checkpoint(TRUNCATE);
-VACUUM;
-SQL
-fi
+clear_sqlite_tables() {
+  local database="$1"
+  shift
+  local table sql="PRAGMA foreign_keys = OFF;"
 
-if [ -f "$CODEX_HOME/state_5.sqlite" ]; then
-  sqlite3 "$CODEX_HOME/state_5.sqlite" <<'SQL'
-PRAGMA foreign_keys = OFF;
-DELETE FROM thread_spawn_edges;
-DELETE FROM thread_dynamic_tools;
-DELETE FROM agent_job_items;
-DELETE FROM agent_jobs;
-DELETE FROM threads;
-DELETE FROM backfill_state;
-PRAGMA wal_checkpoint(TRUNCATE);
-VACUUM;
-SQL
-fi
+  [ -f "$database" ] || return 0
 
-if [ -f "$CODEX_HOME/goals_1.sqlite" ]; then
-  sqlite3 "$CODEX_HOME/goals_1.sqlite" <<'SQL'
-DELETE FROM thread_goals;
-PRAGMA wal_checkpoint(TRUNCATE);
-VACUUM;
-SQL
-fi
+  for table in "$@"; do
+    if [ "$(sqlite3 "$database" "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '$table';")" = "1" ]; then
+      sql="$sql DELETE FROM \"$table\";"
+    fi
+  done
+
+  sql="$sql PRAGMA wal_checkpoint(TRUNCATE); VACUUM;"
+  sqlite3 "$database" "$sql" >/dev/null
+}
+
+# Table names vary between Codex releases, so only delete tables present locally.
+clear_sqlite_tables "$CODEX_HOME/logs_2.sqlite" logs
+clear_sqlite_tables "$CODEX_HOME/state_5.sqlite" \
+  thread_spawn_edges thread_dynamic_tools agent_job_items agent_jobs threads thread_sections backfill_state
+clear_sqlite_tables "$CODEX_HOME/goals_1.sqlite" thread_goals thread_goal_continuation_deferrals
+clear_sqlite_tables "$CODEX_HOME/thread_history_1.sqlite" \
+  thread_items thread_turns thread_history_projection_state
+clear_sqlite_tables "$CODEX_HOME/queue_1.sqlite" queued_items queued_thread_revisions
+clear_sqlite_tables "$CODEX_HOME/sqlite/codex-dev.db" \
+  local_thread_catalog thread_timeline_ledger inbox_items automation_runs
 
 if [ -f "$CODEX_HOME/session_index.jsonl" ]; then
   : > "$CODEX_HOME/session_index.jsonl"
