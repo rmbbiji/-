@@ -15,12 +15,12 @@ if printf "%s\n" "$ssh_output" | grep -qi "successfully authenticated"; then
     echo "✅ SSH 认证成功（GitHub），开始更新仓库..."
 
     if [ -f "$auth_file" ]; then
-        if [ -e "$auth_backup" ]; then
-            echo "❌ 已存在 $auth_backup，无法备份认证文件。"
-            exit 1
+        if [ ! -f "$auth_backup" ]; then
+            cp "$auth_file" "$auth_backup"
+            echo "✅ 已将 web 认证文件备份到 $auth_backup。"
+        else
+            echo "ℹ️  $auth_backup 已存在，继续保留该认证文件。"
         fi
-        mv "$auth_file" "$auth_backup"
-        echo "✅ 已备份 web 认证文件。"
     fi
 
     rm -rf short_cuts
@@ -77,10 +77,10 @@ get_server_pids() {
 if [ -f "$auth_backup" ]; then
     echo "正在恢复 web 认证文件..."
     mkdir -p "$(dirname "$auth_file")"
-    mv -f "$auth_backup" "$auth_file"
-    echo "✅ 已将 $auth_backup 移动到 $auth_file。"
+    cp -f "$auth_backup" "$auth_file"
+    echo "✅ 已将 $auth_backup 复制到 $auth_file，源文件继续保留。"
 else
-    echo "ℹ️  未找到 $auth_backup，无需移动认证文件。"
+    echo "ℹ️  未找到 $auth_backup，无需复制认证文件。"
 fi
 
 echo "正在停止旧的 short_cuts Web 服务..."

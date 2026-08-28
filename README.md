@@ -36,7 +36,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/rmbbiji/rmbbiji-toolbox/
 
 ### 更新 short_cuts
 
-这个脚本会删除当前目录下的 `short_cuts` 目录并安装依赖。关闭旧服务前，脚本会把备份的 `/root/auth.json` 移动到 `/root/short_cuts/web/data/auth.json`。随后，它只查找命令参数包含 `/root/short_cuts/web/server.py` 的 Python 进程：找到便先停止旧服务，找不到则直接继续，最后始终启动 Web 服务并监听 `0.0.0.0:4188`。进程类型检查可避免误结束执行更新脚本的 `bash -c`。请先切换到你希望放置 `short_cuts` 的目录再运行，并确认 Web 服务确实使用这个路径和端口。
+这个脚本会删除当前目录下的 `short_cuts` 目录并安装依赖。关闭旧服务前，脚本会把 `/root/auth.json` 复制到 `/root/short_cuts/web/data/auth.json`，并继续保留 `/root/auth.json`。如果首次运行时只有旧目录中的认证文件，脚本会先将其复制到 `/root/auth.json` 作为长期备份。随后，它只查找命令参数包含 `/root/short_cuts/web/server.py` 的 Python 进程：找到便先停止旧服务，找不到则直接继续，最后始终启动 Web 服务并监听 `0.0.0.0:4188`。进程类型检查可避免误结束执行更新脚本的 `bash -c`。请先切换到你希望放置 `short_cuts` 的目录再运行，并确认 Web 服务确实使用这个路径和端口。
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/rmbbiji/rmbbiji-toolbox/main/update_short_cuts.sh)"
