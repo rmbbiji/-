@@ -60,4 +60,51 @@ else
     echo "⚠️  未找到 short_cuts/requirements.txt，跳过安装。"
 fi
 
+# ==================== 重启 short_cuts Web 服务 ====================
+# 只匹配目标 server.py，避免误杀其他 Python 服务。
+server_script="/root/short_cuts/web/server.py"
+server_port="4188"
+
+if [ ! -f "$server_script" ]; then
+    echo "❌ 未找到 Web 服务文件：$server_script"
+    exit 1
+fi
+
+echo "正在停止旧的 short_cuts Web 服务..."
+server_pids=$(pgrep -f "$server_script" || true)
+if [ -n "$server_pids" ]; then
+    for pid in $server_pids; do
+        kill "$pid" 2>/dev/null || true
+    done
+
+    # 给服务一个正常退出的机会，避免新服务启动时端口仍被占用。
+    sleep 1
+    remaining_pids=$(pgrep -f "$server_script" || true)
+    if [ -n "$remaining_pids" ]; then
+        echo "⚠️  旧服务未正常退出，正在强制停止..."
+        for pid in $remaining_pids; do
+            kill -KILL "$pid" 2>/dev/null || true
+        done
+        sleep 1
+        remaining_pids=$(pgrep -f "$server_script" || true)
+        if [ -n "$remaining_pids" ]; then
+            echo "❌ 无法停止旧的 Web 服务，请确认当前用户有权限结束这些进程：$remaining_pids"
+            exit 1
+        fi
+    fi
+    echo "✅ 旧的 Web 服务已停止。"
+else
+    echo "ℹ️  未找到正在运行的旧 Web 服务。"
+fi
+
+echo "正在启动新的 short_cuts Web 服务..."
+nohup python3 "$server_script" --host 0.0.0.0 --port "$server_port" >/dev/null 2>&1 &
+server_pid=$!
+sleep 1
+if ! kill -0 "$server_pid" 2>/dev/null; then
+    echo "❌ Web 服务启动失败。"
+    exit 1
+fi
+echo "✅ Web 服务已启动（PID: $server_pid，端口: $server_port）。"
+
 echo "🎉 所有步骤执行完毕！"
